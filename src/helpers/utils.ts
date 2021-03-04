@@ -75,7 +75,7 @@ export type Worklog = {
 };
 
 export type TaskItem = {
-  uuid: string;
+  key: string;
   id: number;
   tag: string;
   title: string;
@@ -95,7 +95,7 @@ export const createTask = (
   logs?: Worklog[],
 ): TaskItem => {
   return {
-    uuid: generateUuid(),
+    key: generateUuid(),
     id: id,
     tag: tag,
     title: task,

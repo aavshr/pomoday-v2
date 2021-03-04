@@ -1,45 +1,41 @@
-export const pullFromDB = (server, token) => {
-  const url = server.replace(/\/$/, '') + '/list';
-  return fetch(url, {
-    headers: {
-      Authorization: `Basic ${token}`,
-    },
-  }).then(r => r.json());
+import db from './db';
+import { TaskStatus } from './utils';
+
+export const pullTasksFromDB = async () => {
+  const storedTasks = db.tasks.fetch();
+  var tasks = [];
+  for await (const taskItems of storedTasks) {
+    for (const task of taskItems) {
+      tasks.push(task);
+    }
+  }
+  if (tasks.length === 0) {
+    return Promise.resolve(null);
+  }
+  console.log('pulled tasks', tasks);
+  return Promise.resolve(tasks);
 };
 
-export const pushToDB = (tasks, server, token) => {
-  const url = server.replace(/\/$/, '') + '/list';
-  const data = JSON.stringify({
-    tasks: tasks.map(t => ({
-      // This is a fallback layer for legacy version of Pomoday
-      ...t,
-      logs: t.logs || [],
-      archived: t.archived || false,
-      lastaction: t.lastaction || Date.now(),
-    })),
+export const pushTasksToDB = (tasks, deletedTasks) => {
+  let toPush = [];
+  tasks.forEach(task => {
+    if (task.status !== TaskStatus.NONE) {
+      toPush.push(task);
+    }
   });
-  return fetch(url, {
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      Authorization: `Basic ${token}`,
-    },
-    method: 'PUT',
-    body: data,
-  }).then(r => r.json());
+  // delete each deleted task
+  deletedTasks.forEach(async task => {
+    await db.tasks.delete(task.key);
+  });
+  if (toPush.length) {
+    return db.putItems(db.tasks, toPush);
+  }
 };
 
-export const authenticateUser = (username, password, server) => {
-  const url = server.replace(/\/$/, '') + '/list';
-  const token = btoa(`${username}:${password}`);
-  const auth = `Basic ${token}`;
-  return fetch(url, {
-    headers: {
-      Authorization: auth,
-    },
-  })
-    .then(r => r.json())
-    .then(() => {
-      return token;
-    });
+export const pullConfigFromDB = () => {
+  return db.config.get('pomoday');
+};
+
+export const pushConfigToDB = config => {
+  return db.config.put({ config: config }, 'pomoday');
 };
