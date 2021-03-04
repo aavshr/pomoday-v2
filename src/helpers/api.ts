@@ -12,7 +12,6 @@ export const pullTasksFromDB = async () => {
   if (tasks.length === 0) {
     return Promise.resolve(null);
   }
-  console.log('pulled tasks', tasks);
   return Promise.resolve(tasks);
 };
 

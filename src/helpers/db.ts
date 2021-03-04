@@ -9,7 +9,7 @@ const pk = getCookieValue('pk');
 
 const putItems = async (base, items) => {
   const l = items.length;
-  if (l <= 25) {
+  if (l <= 24) {
     return base.putMany(items);
   }
   // putMany op supports only 25 items max
@@ -17,7 +17,7 @@ const putItems = async (base, items) => {
   let start = 0,
     end = 0;
   while (end != l) {
-    end += 25;
+    end += 24;
     if (end > l) {
       end = l;
     }
