@@ -2,25 +2,26 @@ import * as React from 'react';
 import { Row } from './Row';
 import { Today } from './Today';
 import {
-  AUTO_SYNC_TIMER,
   createTask,
   generateUuid,
   getHistoryQueue,
   RowType,
-  SYNC_TIMER,
   TaskItem,
   TaskStatus,
 } from '../helpers/utils';
 import { InputBox } from './InputBox';
-import { GoogleAnalytics } from './GoogleAnalytics';
 import { CodeEditor } from './CodeEditor';
 import { ArchivedList } from './ArchivedList';
 import { HelpDialog } from './HelpDialog';
-import { AuthDialog } from './AuthDialog';
-import { pullFromDB, pushToDB } from '../helpers/api';
+import {
+  pullTasksFromDB,
+  pushTasksToDB,
+  pullConfigFromDB,
+  pushConfigToDB,
+} from '../helpers/api';
 import { StatusBar } from './StatusBar';
 import { QuickHelp } from './QuickHelp';
-import { useEventListener, useInterval } from '../helpers/hooks';
+import { useEventListener } from '../helpers/hooks';
 import { Settings } from './Settings';
 
 export const StateContext = React.createContext<any>(null);
@@ -86,6 +87,7 @@ const tutorialTasks: TaskItem[] = [
 
 const defaultState = {
   tasks: tutorialTasks,
+  deletedTasks: [],
   showHelp: false,
   showQuickHelp: true,
   showToday: false,
@@ -107,67 +109,127 @@ const defaultState = {
   showCustomCSS: false,
   customCSS: '',
   showArchived: false,
-  userWantToLogin: false,
-  authToken: '',
-  userName: '',
-  serverUrl: '',
-  lastSync: 0,
+  filterBy: '',
+};
+
+const emptyState = {
+  tasks: [],
+  deletedTasks: [],
+  showHelp: false,
+  showQuickHelp: false,
+  showToday: false,
+  darkMode: false,
+  sawTheInput: false,
+  taskVisibility: {
+    done: true,
+    flagged: true,
+    wait: true,
+    wip: true,
+  },
+  history: getHistoryQueue(),
+  showSettings: false,
+  settings: {
+    hintPopup: false,
+    stickyInput: false,
+    autoDarkMode: false,
+  },
+  showCustomCSS: false,
+  customCSS: '',
+  showArchived: false,
   filterBy: '',
 };
 
 const getInitialState = () => {
-  if (window.localStorage) {
-    const saved = window.localStorage.getItem('pomoday');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed) {
-          for (let key in defaultState) {
-            if (!parsed.hasOwnProperty(key)) {
-              parsed[key] = defaultState[key];
-            }
-            // fill up all missing data because of schema changes here
-            if (key === 'tasks') {
-              parsed[key] = parsed[key].map((t: TaskItem) => ({
-                ...t,
-                uuid: t.uuid || generateUuid(),
-              }));
-            }
-          }
-          return parsed;
-        }
-      } catch {}
-    }
-  }
-  return defaultState;
+  return emptyState;
 };
 
-let pushInProgress = false;
-const syncTasks = async (state, setState, isPull) => {
-  if (!isPull) {
-    if (state.tasks.length) {
-      pushInProgress = true;
-      const data = await pushToDB(
-        state.tasks,
-        state.serverUrl,
-        state.authToken,
-      );
-      pushInProgress = false;
-      setState({
+let pullInProgress = true;
+const loadInitState = async (state, setState) => {
+  const tasksData = await pullTasksFromDB();
+  const configData = await pullConfigFromDB();
+  if (tasksData && !configData) {
+    setState(
+      {
         ...state,
-        tasks: data.tasks,
-        lastSync: Date.now(),
-      });
-    }
+        tasks: tasksData,
+      },
+      (pullInProgress = false),
+    );
+  } else if (!tasksData && configData) {
+    setState(
+      {
+        ...state,
+        showHelp: configData.config.showHelp,
+        showQuickHelp: configData.config.showQuickHelp,
+        showToday: configData.config.showToday,
+        darkMode: configData.config.darkMode,
+        sawTheInput: configData.config.sawTheInput,
+        taskVisibility: configData.config.taskVisibility,
+        history: configData.config.history,
+        showSettings: configData.config.showSettings,
+        settings: configData.config.settings,
+        showCustomCSS: configData.config.showCustomCSS,
+        customCSS: configData.config.customCSS,
+        showArchived: configData.config.showArchived,
+        filterBy: configData.config.filterBy,
+      },
+      (pullInProgress = false),
+    );
+  } else if (tasksData && configData) {
+    setState(
+      {
+        ...state,
+        tasks: tasksData,
+        showHelp: configData.config.showHelp,
+        showQuickHelp: configData.config.showQuickHelp,
+        showToday: configData.config.showToday,
+        darkMode: configData.config.darkMode,
+        sawTheInput: configData.config.sawTheInput,
+        taskVisibility: configData.config.taskVisibility,
+        history: configData.config.history,
+        showSettings: configData.config.showSettings,
+        settings: configData.config.settings,
+        showCustomCSS: configData.config.showCustomCSS,
+        customCSS: configData.config.customCSS,
+        showArchived: configData.config.showArchived,
+        filterBy: configData.config.filterBy,
+      },
+      (pullInProgress = false),
+    );
   } else {
-    if (!pushInProgress) {
-      const data = await pullFromDB(state.serverUrl, state.authToken);
-      setState({
-        ...state,
-        tasks: data.tasks,
-        lastSync: Date.now(),
-      });
+    setState(defaultState, (pullInProgress = false));
+  }
+};
+
+const syncTasks = async (state, wait, setState) => {
+  if (!wait) {
+    if (state.tasks.length) {
+      await pushTasksToDB(state.tasks, state.deletedTasks);
     }
+    setState({
+      ...state,
+      deletedTasks: [],
+    });
+  }
+};
+
+const syncConfig = async (state, wait) => {
+  if (!wait) {
+    await pushConfigToDB({
+      showHelp: state.showHelp,
+      showQuickHelp: state.showQuickHelp,
+      showToday: state.showToday,
+      darkMode: state.darkMode,
+      sawTheInput: state.sawTheInput,
+      taskVisibility: state.taskVisibility,
+      history: state.history,
+      showSettings: state.showSettings,
+      settings: state.settings,
+      showCustomCss: state.showCustomCSS,
+      customCss: state.customCss,
+      showArchived: state.showArchived,
+      filterBy: state.filterBy,
+    });
   }
 };
 
@@ -176,27 +238,36 @@ export const App = () => {
   const mainViewRef = React.useRef(null);
 
   React.useEffect(() => {
-    window.localStorage.setItem('pomoday', JSON.stringify(state));
-  }, [state]);
+    (async () => {
+      await loadInitState(state, setState);
+    })();
+  }, []);
 
   React.useEffect(() => {
-    if (state.authToken && Date.now() - state.lastSync >= SYNC_TIMER) {
-      (async () => {
-        await syncTasks(state, setState, false);
-      })();
-    }
-  }, [state.tasks, state.authToken]);
+    (async () => {
+      await syncTasks(state, pullInProgress, setState);
+    })();
+  }, [state.tasks]);
 
-  useInterval(
-    () => {
-      if (state.authToken && Date.now() - state.lastSync >= SYNC_TIMER) {
-        (async () => {
-          await syncTasks(state, setState, true);
-        })();
-      }
-    },
-    state.authToken ? AUTO_SYNC_TIMER : 0,
-  ); // Auto sync
+  React.useEffect(() => {
+    (async () => {
+      await syncConfig(state, pullInProgress);
+    })();
+  }, [
+    state.showHelp,
+    state.showQuickHelp,
+    state.showToday,
+    state.darkMode,
+    state.sawTheInput,
+    state.taskVisibility,
+    state.history,
+    state.showSettings,
+    state.settings,
+    state.showCustomCSS,
+    state.customCSS,
+    state.showArchived,
+    state.filterBy,
+  ]);
 
   const getVisibilityStatusText = (): string[] => {
     const hidden = Object.keys(state.taskVisibility)
@@ -271,7 +342,10 @@ export const App = () => {
   );
 
   const showEmpty =
-    summary.done === 0 && summary.pending === 0 && summary.wip === 0;
+    summary.done === 0 &&
+    summary.pending === 0 &&
+    summary.wip === 0 &&
+    !pullInProgress;
 
   const countDone = (group, g) => {
     return (
@@ -291,13 +365,7 @@ export const App = () => {
   const processHotKey = e => {
     if (mainViewRef && mainViewRef.current) {
       if (!document.activeElement.tagName.match(/body/i)) return;
-      if (
-        state.showSettings ||
-        state.showHelp ||
-        state.showQuickHelp ||
-        (state.userWantToLogin && !state.authToken)
-      )
-        return;
+      if (state.showSettings || state.showHelp || state.showQuickHelp) return;
       switch (e.key) {
         case 'Escape':
           if (state.filterBy) {
@@ -341,15 +409,24 @@ export const App = () => {
         ) : null}
         <div className="flex-1 flex flex-col sm:flex-row bg-background overflow-hidden no-drag">
           {/* Task List */}
-          {showEmpty ? (
+          {pullInProgress || showEmpty ? (
             <div className={'el-main-view flex-1 p-5 h-full relative'}>
-              <div className={'empty-image w-full h-full'} />
               <div
                 className={
                   'absolute flex flex-col leading-relaxed justify-center items-center top-0 left-0 right-0 bottom-0 text-center text-lg sm:text-xl text-foreground'
                 }>
-                <div>Need to get some work done?</div>
-                <div>Let's add some task!</div>
+                {showEmpty ? (
+                  <>
+                    <div className={'empty-image w-full h-full'} />
+                    <div
+                      className={
+                        'absolute flex flex-col leading-relaxed justify-center items-center top-0 left-0 right-0 bottom-0 text-center text-lg sm:text-xl text-foreground'
+                      }>
+                      <div>Need to get some work done?</div>
+                      <div>Let's add some task!</div>
+                    </div>
+                  </>
+                ) : null}
               </div>
             </div>
           ) : (
@@ -425,14 +502,11 @@ export const App = () => {
               <ArchivedList />
             </div>
           ) : null}
-          {/* Login */}
-          {!state.authToken && state.userWantToLogin ? <AuthDialog /> : null}
           {/* Settings */}
           {state.showSettings ? <Settings /> : null}
         </div>
         <InputBox />
       </div>
-      <GoogleAnalytics />
     </StateContext.Provider>
   );
 };

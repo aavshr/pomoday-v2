@@ -41,17 +41,20 @@ export function checkCommand(tasksToUpdate: any, state, ids) {
 }
 
 export function deleteCommand(tasksToUpdate: any, ids, cmd, state) {
+  let deletedTasks = [];
   if (!ids.length) {
     // Delete by tag
     const tag = (cmd.id.match(/^(@.*)/) || []).pop();
     if (tag) {
-      return state.tasks.reduce((tasks, t: TaskItem) => {
+      const tasks = state.tasks.reduce((tasks, t: TaskItem) => {
         if (t.tag === tag) {
           t.status = TaskStatus.NONE;
+          deletedTasks.push(t);
         }
         tasks.push(t);
         return tasks;
       }, []);
+      return [tasks, deletedTasks];
     }
     // Delete by status
     const status = (
@@ -80,25 +83,29 @@ export function deleteCommand(tasksToUpdate: any, ids, cmd, state) {
         default:
           break;
       }
-      return state.tasks.reduce((tasks, t: TaskItem) => {
+      const tasks = state.tasks.reduce((tasks, t: TaskItem) => {
         if (taskStatus) {
           if (t.status === taskStatus && !t.archived) {
+            deletedTasks.push(t);
             t.status = TaskStatus.NONE;
           }
           tasks.push(t);
         }
         return tasks;
       }, []);
+      return [tasks, deletedTasks];
     }
   } else {
     // Delete by id
-    return state.tasks.reduce((tasks, t) => {
+    const tasks = state.tasks.reduce((tasks, t) => {
       if (ids.indexOf(t.id) !== -1) {
+        deletedTasks.push(t);
         t.status = TaskStatus.NONE;
       }
       tasks.push(t);
       return tasks;
     }, []);
+    return [tasks, deletedTasks];
   }
 }
 
@@ -217,7 +224,7 @@ export function insertTaskCommand(cmd, state, tasksToUpdate: any) {
     tasksToUpdate = state.tasks
       .filter(t => t.id !== nextId + 1)
       .concat({
-        uuid: generateUuid(),
+        key: generateUuid(),
         id: nextId + 1,
         tag: tag,
         title: task,

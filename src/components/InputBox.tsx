@@ -127,6 +127,7 @@ export const InputBox = props => {
       else if (isFullEditor ? meta && key === KEY_RETURN : key === KEY_RETURN) {
         const cmd = parseCommand(inputRef.current.value);
         let tasksToUpdate = null;
+        let deletedTasks = null;
         let updateCandidate = {
           ...state,
         };
@@ -149,7 +150,9 @@ export const InputBox = props => {
               break;
             case 'd':
             case 'delete':
-              tasksToUpdate = deleteCommand(tasksToUpdate, ids, cmd, state);
+              const output = deleteCommand(tasksToUpdate, ids, cmd, state);
+              tasksToUpdate = output[0];
+              deletedTasks = output[1];
               break;
             case 'fl':
             case 'flag':
@@ -204,6 +207,12 @@ export const InputBox = props => {
           updateCandidate = {
             ...updateCandidate,
             tasks: tasksToUpdate,
+          };
+        }
+        if (deletedTasks) {
+          updateCandidate = {
+            ...updateCandidate,
+            deletedTasks: deletedTasks,
           };
         }
         setState({
@@ -372,6 +381,12 @@ export const InputBox = props => {
                 <u>st</u>op:
               </b>{' '}
               stop timer
+            </p>
+            <p>
+              <b>
+                <u>c</u>heck:
+              </b>{' '}
+              check/complete a task
             </p>
             <p>
               <b>
